@@ -11,13 +11,52 @@ Every date agrees: issued 04 JAN 2029, expires 03 JAN 2039; all stamps
 fall between those dates, in paired arrival/departure order. The MRZ
 check digits are computed with the real ICAO 9303 algorithm, not typed.
 
-No network, no external files beyond the bundled fonts. Pillow only.
+No network, no external files beyond the bundled fonts. Pillow only —
+but the grader image (python:3.13-slim) has no Pillow installed, so the
+repo vendors the official Pillow 11.3.0 wheel for CPython 3.13 (PyPI) as
+one binary file, vendor/pillow-11.3.0-cp313.whl, and _ensure_pillow()
+below extracts it to a private temp dir at run time (no network, no
+install). If a system Pillow is importable it is used as-is.
 Output: os.environ.get("MAKEFUN_OUTPUT_DIR", "/output") + "/entry.png"
 """
 import math
 import os
 import random
 import sys
+import tempfile
+import zipfile
+
+
+def _ensure_pillow():
+    """Make Pillow importable in the grader image, which lacks it.
+
+    Tries the system Pillow first; otherwise extracts the vendored
+    official Pillow wheel (vendor/pillow-11.3.0-cp313.whl, PyPI) to a
+    private temp directory and puts it on sys.path. Falls back to
+    extracting under the output dir if the temp dir cannot be used.
+    """
+    try:
+        import PIL  # noqa: F401
+        return
+    except ImportError:
+        pass
+    here = os.path.dirname(os.path.abspath(__file__))
+    wheel = os.path.join(here, "vendor", "pillow-11.3.0-cp313.whl")
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
+    for base in (tempfile.gettempdir(), out_dir):
+        try:
+            dest = tempfile.mkdtemp(prefix="pillow-", dir=base)
+            with zipfile.ZipFile(wheel) as zf:
+                zf.extractall(dest)
+            sys.path.insert(0, dest)
+            import PIL  # noqa: F401
+            return
+        except Exception:
+            continue
+    import PIL  # noqa: F401  (raises the real error if all else failed)
+
+
+_ensure_pillow()
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
